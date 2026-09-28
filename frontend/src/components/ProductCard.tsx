@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Product, PricingSuggestion, ReorderSuggestion } from '../types';
 import { StockHealthBadge } from './StockHealthBadge';
 import { SuggestionCard } from './SuggestionCard';
@@ -69,13 +70,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <span className="sku-badge">{product.sku}</span>
             <span className="category-pill">{product.category}</span>
           </div>
-          <h3 className="card-title">{product.name}</h3>
+          <Link to={`/products/${product.id}`} className="card-title-link">
+            <h3 className="card-title">{product.name}</h3>
+          </Link>
         </div>
-        <StockHealthBadge
-          stockLevel={product.stockLevel}
-          reorderThreshold={product.reorderThreshold}
-          status={product.status}
-        />
+        <div className="card-top-right">
+          <StockHealthBadge
+            stockLevel={product.stockLevel}
+            reorderThreshold={product.reorderThreshold}
+            status={product.status}
+          />
+          <Link to={`/products/${product.id}`} className="btn-view-details" title="Open product analytics workspace">
+            Analytics ↗
+          </Link>
+        </div>
       </div>
 
       {/* Stock visual progress bar */}

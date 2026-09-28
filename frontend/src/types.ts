@@ -39,3 +39,22 @@ export interface ReorderSuggestion {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SaleRecord {
+  id: string;
+  productId: number;
+  quantity: number;
+  price: number;
+  timestamp: string;
+  resultingStock: number;
+  resultingDemandVelocity: number;
+}
+
+export interface SimulationFeedback {
+  productId: number;
+  type: 'TRIGGER_INVENTORY_LOW' | 'TRIGGER_DEMAND_SPIKE' | 'DUPLICATE_PENDING' | 'NO_TRIGGER' | 'STOCK_EXHAUSTED';
+  title: string;
+  message: string;
+  timestamp: string;
+}
+
