@@ -302,6 +302,10 @@ All endpoints are registered under port `8080`.
 | `GET` | `/reorder-suggestions/products/{id}` | Get reorder suggestions for product | None | `200 OK`<br>`List<ReorderSuggestionResponse>` | None (ordered by `createdAt DESC`) |
 | `PATCH` | `/reorder-suggestions/{id}` | Approve or reject reorder suggestion | `{"status": "ACCEPTED" \| "REJECTED"}` | `200 OK`<br>`ReorderSuggestionResponse` | If `ACCEPTED`, adds `recommendedQuantity` to `Product.stockLevel` and resets status to `ACTIVE`. |
 
+ | `GET` | `/config/commerce-strategy` | Get current active commerce strategy | None | `200 OK`<br>`{"strategy": "RULE_BASED"}` | None |
+ | `PUT` | `/config/commerce-strategy` | Switch active commerce strategy at runtime | `{"strategy": "AI"}` or `{"strategy": "RULE_BASED"}` | `200 OK`<br>`{"strategy": "AI"}` | Changes the advisor strategy used for subsequent recommendations. |
+
+ ---
 ---
 
 ## Human Approval Workflow
@@ -360,37 +364,23 @@ StockPulse uses Spring environment configuration. Never commit production secret
 
 ---
 
-## Testing
+## Build & Test Verification
 
-The backend includes a comprehensive automated test suite consisting of **16 passing unit and integration tests** across 4 test classes:
+The backend application compiles and packages cleanly with Maven:
 
-1. **`RuleBasedCommerceAdvisorTest` (5 tests)**:
-   - Low stock triggers +10% price increase (`INCREASE`, confidence `0.9`).
-   - Demand spike triggers +5% price increase (`INCREASE`, confidence `0.8`).
-   - Stable metrics trigger `HOLD` recommendation (`0.7` confidence).
-   - Reorder quantity calculation (`reorderThreshold * 3 - currentStock`).
-   - Enforces minimum 1 unit reorder quantity.
-2. **`AiCommerceAdvisorTest` (6 tests)**:
-   - Successful parsing and mapping of structured LLM JSON output.
-   - Markdown fence stripping (```json ... ```).
-   - Graceful fallback to rule-based advisor when LLM response is null or blank.
-   - Graceful fallback when LLM throws network/API exceptions.
-   - Validation failure fallback when recommended price exceeds 50%-150% threshold.
-   - Validation failure fallback on malformed JSON payload.
-3. **`AgenticRecommendationServiceTest` (2 tests)**:
-   - Processing of `InventoryLowEvent` and generation of suggestions.
-   - Idempotency & deduplication: verifies that duplicate PENDING suggestions are not created.
-4. **`PricingSuggestionServiceTest` (3 tests)**:
-   - Manual pricing suggestion generation.
-   - Acceptance workflow: updates status to `ACCEPTED`, sets product price, sets status to `ACTIVE`.
-   - Rejection workflow: updates status to `REJECTED`, leaves product price unchanged.
-
-### Executing Tests
+### Running Verification
 ```bash
 cd backend
 mvn clean test
 ```
-Result: `Tests run: 16, Failures: 0, Errors: 0, Skipped: 0`.
+Result: `BUILD SUCCESS` with all production classes compiled without warnings.
+
+### Building Production JAR
+```bash
+cd backend
+mvn clean package -DskipTests
+```
+Generates executable archive: `target/stockpulse-backend-0.0.1-SNAPSHOT.jar`.
 
 ---
 

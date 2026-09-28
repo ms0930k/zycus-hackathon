@@ -3,6 +3,7 @@ package com.stockpulse.agent;
 import com.stockpulse.commerce.*;
 import com.stockpulse.common.SuggestionStatus;
 import com.stockpulse.common.TriggerReason;
+import com.stockpulse.config.StrategyResolver;
 import com.stockpulse.pricing.PricingSuggestion;
 import com.stockpulse.pricing.PricingSuggestionRepository;
 import com.stockpulse.product.Product;
@@ -22,19 +23,19 @@ public class AgenticRecommendationService {
     private final ProductRepository productRepository;
     private final PricingSuggestionRepository pricingSuggestionRepository;
     private final ReorderSuggestionRepository reorderSuggestionRepository;
-    private final CommerceAdvisor commerceAdvisor;
+    private final StrategyResolver strategyResolver;
     private final CategoryDemandService categoryDemandService;
 
     public AgenticRecommendationService(
             ProductRepository productRepository,
             PricingSuggestionRepository pricingSuggestionRepository,
             ReorderSuggestionRepository reorderSuggestionRepository,
-            CommerceAdvisor commerceAdvisor,
+            StrategyResolver strategyResolver,
             CategoryDemandService categoryDemandService) {
         this.productRepository = productRepository;
         this.pricingSuggestionRepository = pricingSuggestionRepository;
         this.reorderSuggestionRepository = reorderSuggestionRepository;
-        this.commerceAdvisor = commerceAdvisor;
+        this.strategyResolver = strategyResolver;
         this.categoryDemandService = categoryDemandService;
     }
 
@@ -60,7 +61,7 @@ public class AgenticRecommendationService {
         ProductContext context = createProductContext(product, "INVENTORY_LOW");
 
         // Get recommendation from commerce advisor
-        CommerceRecommendation recommendation = commerceAdvisor.recommend(context);
+        CommerceRecommendation recommendation = strategyResolver.getCurrentAdvisor().recommend(context);
 
         // Create pricing suggestion
         createPricingSuggestion(product, recommendation, TriggerReason.INVENTORY_LOW);
@@ -93,7 +94,7 @@ public class AgenticRecommendationService {
         ProductContext context = createProductContext(product, "DEMAND_SPIKE");
 
         // Get recommendation from commerce advisor
-        CommerceRecommendation recommendation = commerceAdvisor.recommend(context);
+        CommerceRecommendation recommendation = strategyResolver.getCurrentAdvisor().recommend(context);
 
         // Create pricing suggestion
         createPricingSuggestion(product, recommendation, TriggerReason.DEMAND_SPIKE);

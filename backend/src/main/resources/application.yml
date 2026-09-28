@@ -17,7 +17,7 @@ spring:
 
 stockpulse:
   commerce:
-    strategy: RULE_BASED
+    strategy: ${STOCKPULSE_COMMERCE_STRATEGY:RULE_BASED}
   demand:
     spikeMultiplier: 3.0
 
@@ -27,7 +27,7 @@ llm:
     key: ${LLM_API_KEY:}
   base:
     url: ${LLM_BASE_URL:}
-  model: ${LLM_MODEL:}
+  model: ${LLM_MODEL:qwen-cursor}
 
 server:
   port: 8080

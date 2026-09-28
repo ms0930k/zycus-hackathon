@@ -5,6 +5,7 @@ import com.stockpulse.commerce.CommerceAdvisor;
 import com.stockpulse.commerce.ProductContext;
 import com.stockpulse.common.SuggestionStatus;
 import com.stockpulse.common.TriggerReason;
+import com.stockpulse.config.StrategyResolver;
 import com.stockpulse.pricing.dto.PricingSuggestionResponse;
 import com.stockpulse.product.Product;
 import com.stockpulse.product.ProductRepository;
@@ -19,17 +20,17 @@ public class PricingSuggestionService {
 
     private final PricingSuggestionRepository pricingSuggestionRepository;
     private final ProductRepository productRepository;
-    private final CommerceAdvisor commerceAdvisor;
+    private final StrategyResolver strategyResolver;
     private final CategoryDemandService categoryDemandService;
 
     public PricingSuggestionService(
             PricingSuggestionRepository pricingSuggestionRepository,
             ProductRepository productRepository,
-            CommerceAdvisor commerceAdvisor,
+            StrategyResolver strategyResolver,
             CategoryDemandService categoryDemandService) {
         this.pricingSuggestionRepository = pricingSuggestionRepository;
         this.productRepository = productRepository;
-        this.commerceAdvisor = commerceAdvisor;
+        this.strategyResolver = strategyResolver;
         this.categoryDemandService = categoryDemandService;
     }
 
@@ -41,7 +42,7 @@ public class PricingSuggestionService {
         ProductContext context = createProductContext(product, "MANUAL");
 
         // Get recommendation from commerce advisor
-        com.stockpulse.commerce.CommerceRecommendation recommendation = commerceAdvisor.recommend(context);
+        com.stockpulse.commerce.CommerceRecommendation recommendation = strategyResolver.getCurrentAdvisor().recommend(context);
 
         // Create pricing suggestion
         PricingSuggestion pricingSuggestion = new PricingSuggestion();

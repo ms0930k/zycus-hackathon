@@ -1,1 +1,21 @@
+# Environment
 .env
+.env*.local
+*.env
+
+# Maven build outputs
+target/
+*.jar
+*.war
+*.class
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Logs
+logs/
+*.log

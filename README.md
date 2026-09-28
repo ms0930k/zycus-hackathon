@@ -39,33 +39,79 @@ StockPulse operates on a clear, decoupled decision-and-control loop:
 
 ---
 
-## Architecture
+## Run with Docker (Recommended)
 
-StockPulse is designed with a clean, decoupled architecture:
-- **Frontend**: Single-page merchandising dashboard built in React 18, TypeScript, and Vite. Interacts with the backend via centralized REST API utilities and short-polling for asynchronous agent outputs.
-- **Backend API Layer**: Spring Boot REST controllers exposing endpoints for products, orders, stock adjustments, and recommendation approval workflows.
-- **Agentic Event Bus**: Spring `ApplicationEventPublisher` publishing lightweight domain events (`InventoryLowEvent`, `DemandSpikeEvent`) handled asynchronously by `AgentEventListener` on a dedicated thread pool.
-- **Commerce Strategy Layer**: Strategy pattern with a unified `CommerceAdvisor` interface backed by `AiCommerceAdvisor` (Zycus LiteLLM proxy calling `qwen-cursor`) and `RuleBasedCommerceAdvisor` (deterministic rules engine).
-- **Data Persistence**: Spring Data JPA / Hibernate supporting Neon PostgreSQL for production environments and an in-memory H2 database for zero-dependency local development and evaluation.
+StockPulse is fully containerized and can be launched with a single Docker Compose command.
 
-```mermaid
-graph TD
-    UI[Frontend: React 18 + Vite] -->|REST API Requests| API[Spring Boot REST Controllers]
-    API -->|Mutate Stock / Order| PS[ProductService]
-    PS -->|Publish Signal| EB[Spring ApplicationEventPublisher]
-    EB -->|Async Event| AL[AgentEventListener @Async]
-    AL -->|Generate Suggestion| ARS[AgenticRecommendationService]
-    ARS -->|Fetch Context| CDS[CategoryDemandService]
-    ARS -->|Request Advice| CA{CommerceAdvisor}
-    CA -->|Primary| AI[AiCommerceAdvisor: LiteLLM qwen-cursor]
-    AI -.->|On Failure / Error| RB[RuleBasedCommerceAdvisor: Fallback]
-    CA -->|Alternative| RB
-    ARS -->|Save PENDING| DB[(PostgreSQL / Neon or Local H2)]
-    UI -->|Poll Pending Suggestions| API
-    UI -->|Approve / Reject Action| API
-    API -->|Update Price / Stock| SuggService[Pricing / Reorder Suggestion Service]
-    SuggService --> DB
+### Architecture in Docker
+
 ```
+Browser (User)
+      │
+      ▼ (Port 80 / 5173)
+Nginx Web Server / Static React SPA
+      │
+      │ (Internal reverse proxy: /products, /pricing-suggestions, etc.)
+      ▼ (Port 8080)
+Spring Boot Backend (Java 17/21 JRE)
+      │
+      ├──► PostgreSQL 16 Database (db:5432)
+      │     (Internal Docker network, persistent pgdata volume)
+      │
+      └──► Zycus LiteLLM Gateway (External HTTPS)
+            (Model: qwen-cursor, Bearer token, fallback to Rule engine)
+```
+
+### 1. Configure Environment
+Copy the example environment template to `.env` in the project root:
+```bash
+cp .env.example .env
+```
+Fill in your LiteLLM credentials in `.env` (never commit this file):
+```env
+LLM_PROVIDER=litellm
+LLM_BASE_URL=https://litellm-qc.zycus.net
+LLM_API_KEY=your_actual_api_key_here
+LLM_MODEL=qwen-cursor
+STOCKPULSE_COMMERCE_STRATEGY=RULE_BASED
+```
+*(If `LLM_API_KEY` is not provided or offline, the system automatically uses `RuleBasedCommerceAdvisor` fallback).*
+
+### 2. Start All Services
+```bash
+docker compose up --build
+```
+This builds and starts 3 coordinated containers:
+1. `stockpulse-db`: PostgreSQL 16 database with health check (`pg_isready`).
+2. `stockpulse-backend`: Spring Boot multi-stage image. Waits for `db` to be healthy, auto-generates schema, and seeds all 8 demo products.
+3. `stockpulse-frontend`: Multi-stage build (Node build $\rightarrow$ lightweight Nginx Alpine). Proxies API traffic to backend on the same origin.
+
+### 3. Access the Application
+- **Frontend Dashboard**: Open [http://localhost](http://localhost) or [http://localhost:5173](http://localhost:5173)
+- **Backend Health Check**: [http://localhost:8080/health](http://localhost:8080/health)
+- **Product Catalog API**: [http://localhost:8080/products](http://localhost:8080/products)
+
+### 4. Stop Services
+```bash
+# Stop containers while preserving database volume
+docker compose down
+
+# Stop containers and remove database volume
+docker compose down -v
+```
+
+---
+
+## Database Configuration: Local Docker vs. Neon Production
+
+| Mode | Database | Connection String / Configuration | Characteristics |
+|------|----------|-----------------------------------|-----------------|
+| **Docker Compose (Default)** | PostgreSQL 16 Alpine container (`stockpulse-db`) | `jdbc:postgresql://db:5432/stockpulse?user=stockpulse&password=stockpulse` | Zero-dependency, self-contained, isolated local Docker network, persistent named volume `pgdata`. |
+| **Local Dev (Non-Docker)** | In-Memory H2 Database | Embedded via `-Dspring-boot.run.profiles=local` | Ultra-fast local development and testing without installing PostgreSQL. |
+| **External Production (Neon)** | Serverless Neon PostgreSQL | `jdbc:postgresql://<neon-host>:5432/<db>?user=<user>&password=<pass>&sslmode=require` | Managed cloud PostgreSQL. Configured via `DATABASE_URL` environment variable. |
+
+> [!NOTE]
+> Neon PostgreSQL cloud connectivity requires outbound network access on port 5432. For local evaluation and testing in firewalled or sandbox environments, use the self-contained Docker Compose PostgreSQL setup or the local H2 profile.
 
 ---
 
@@ -78,10 +124,12 @@ graph TD
 | **Build Tool** | Apache Maven | `3.9+` |
 | **Persistence** | Spring Data JPA / Hibernate | Object-Relational Mapping & Transactions |
 | **Production Database** | PostgreSQL / Neon | Cloud serverless PostgreSQL with SSL |
-| **Local Database** | H2 Database | In-memory profile (`-Dspring-boot.run.profiles=local`) |
+| **Local Container Database** | PostgreSQL 16 Alpine | Containerized inside Docker Compose |
+| **Local In-Memory Profile** | H2 Database | In-memory profile (`-Dspring-boot.run.profiles=local`) |
 | **Frontend Framework** | React | `18.3.1` |
 | **Frontend Language** | TypeScript | `5.6.2` |
 | **Build & Bundler** | Vite | `5.4.14` |
+| **Production Web Server** | Nginx Alpine | Serves static assets & reverse proxies API endpoints |
 | **Styling** | Vanilla CSS | Custom design tokens, dark theme, responsive grid |
 | **AI LLM Gateway** | LiteLLM | Model `qwen-cursor` with structured JSON responses |
 | **JSON Serialization** | Jackson Databind | Clean JSON schema mapping and validation |
@@ -154,23 +202,27 @@ Is there already a PENDING suggestion for this Product + TriggerReason?
 
 ## Evaluator Quick Walkthrough (Demo Flow)
 
-Follow these steps for a complete end-to-end evaluation:
+Follow these steps for a complete evaluation:
 
-### Step 1: Start Backend
+### Step 1: Start Application
+Run with Docker:
+```bash
+docker compose up --build
+```
+Or run locally:
 ```powershell
+# Terminal 1: Backend
 cd backend
 mvn spring-boot:run "-Dspring-boot.run.profiles=local"
-```
-Wait until the console reports: `Started StockPulseApplication in ... seconds`.
 
-### Step 2: Start Frontend
-In a separate terminal:
-```powershell
+# Terminal 2: Frontend
 cd frontend
 npm install
 npm run dev
 ```
-Open your browser at `http://localhost:5173`.
+
+### Step 2: Open Dashboard
+Navigate to [http://localhost](http://localhost) (or [http://localhost:5173](http://localhost:5173)).
 
 ### Step 3: Run the Inventory-Low Demo (`PRD-003`)
 1. On the dashboard, locate seeded product **PRD-003** (*Organic Cotton T-Shirt*).
@@ -178,7 +230,7 @@ Open your browser at `http://localhost:5173`.
 3. In the input box next to "Set Stock", enter `5` and click **Set Stock** (or click **🛒 Simulate Sale**).
 4. Within 2–4 seconds, the asynchronous agent detects low inventory and creates:
    - **💡 Pricing Suggestion**: Recommends increasing the price by +10% (from $24.99 to $27.49) with trigger `INVENTORY_LOW`.
-   - **📦 Reorder Suggestion**: Recommends replenishment quantity (`+37` units).
+   - **📦 Reorder Suggestion**: Recommends replenishment quantity (`+40` units).
 5. Click **Accept** on the pricing suggestion.
 6. Observe that the product's live price instantly updates to **$27.49** and the card badge updates.
 
@@ -192,90 +244,46 @@ Open your browser at `http://localhost:5173`.
 
 ---
 
-## Setup & Running Instructions
-
-### Prerequisites
-- **Java**: JDK 17 or JDK 21 installed (`java -version` and `javac -version`)
-- **Maven**: Maven 3.9+ (`mvn -version`)
-- **Node.js**: Node 18+ and npm (`node -v` and `npm -v`)
-
----
-
-### Backend Setup
-
-#### Option A: Local In-Memory H2 Profile (Recommended for Evaluation)
-Requires no external database setup. The application automatically starts with an embedded H2 database and seeds all 8 demo products:
-```powershell
-cd backend
-mvn spring-boot:run "-Dspring-boot.run.profiles=local"
-```
-H2 console is accessible at `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:stockpulse`, user: `sa`, password: empty).
-
-#### Option B: Production Neon PostgreSQL Configuration
-Configure your `.env` file in `/backend/.env`:
-```env
-DATABASE_URL=jdbc:postgresql://<neon-host>:5432/<database>?user=<user>&password=<password>&sslmode=require
-LLM_PROVIDER=litellm
-LLM_BASE_URL=https://litellm-qc.zycus.net
-LLM_API_KEY=<your-api-key>
-LLM_MODEL=qwen-cursor
-```
-Run with default profile:
-```powershell
-cd backend
-mvn spring-boot:run
-```
-
----
-
-### Frontend Setup
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-The dashboard runs at `http://localhost:5173` and connects to the backend at `http://localhost:8080`.
-
-To build the production bundle:
-```powershell
-cd frontend
-npm run build
-```
-
----
-
 ## Project Structure
 
 ```
 zycus-hackathon/
 ├── README.md                      # Root documentation & architecture overview
+├── docker-compose.yml             # Docker Compose for DB, Backend, and Frontend
+├── .env.example                   # Root environment variable template
+├── .gitignore                     # Git ignore rules for secrets, builds, and artifacts
 ├── backend/                       # Spring Boot 3.1.5 backend service
+│   ├── Dockerfile                 # Multi-stage Dockerfile (Maven build -> JRE runtime)
+│   ├── .dockerignore              # Excludes secrets, target, and logs from Docker context
 │   ├── pom.xml                    # Maven build configuration & dependencies
 │   ├── ADR.md                     # Architecture Decision Records (ADR-001 - ADR-006)
 │   ├── .env.example               # Example environment variable template
+│   ├── .gitignore                 # Backend-specific ignore rules
 │   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/stockpulse/
-│   │   │   │   ├── agent/         # Event bus, @Async listeners, AgenticRecommendationService
-│   │   │   │   ├── ai/            # LiteLLM client (qwen-cursor), MockLlmClient, LlmClient interface
-│   │   │   │   ├── commerce/      # CommerceAdvisor strategy, RuleBased & AI implementations, Category analytics
-│   │   │   │   ├── common/        # GlobalExceptionHandler, HealthController, Enums
-│   │   │   │   ├── config/        # ThreadPool AsyncConfig, CorsConfig, StrategyConfig
-│   │   │   │   ├── pricing/       # PricingSuggestion entity, repository, service, controller
-│   │   │   │   ├── product/       # Product entity, repository, service, controller
-│   │   │   │   ├── reorder/       # ReorderSuggestion entity, repository, service, controller
-│   │   │   │   └── seed/          # SeedDataLoader initializing the 8 demo catalog products
-│   │   │   └── resources/
-│   │   │       ├── application.yml        # Default production / PostgreSQL configuration
-│   │   │       └── application-local.yml  # Local H2 development profile
-│   │   └── test/                  # 16 unit and integration test suites
+│   │   └── main/
+│   │       ├── java/com/stockpulse/
+│   │       │   ├── agent/         # Event bus, @Async listeners, AgenticRecommendationService
+│   │       │   ├── ai/            # LiteLLM client (qwen-cursor), MockLlmClient, LlmClient interface
+│   │       │   ├── commerce/      # CommerceAdvisor strategy, RuleBased & AI implementations, Category analytics
+│   │       │   ├── common/        # GlobalExceptionHandler, HealthController, Enums
+│   │       │   ├── config/        # ThreadPool AsyncConfig, CorsConfig, StrategyConfig
+│   │       │   ├── pricing/       # PricingSuggestion entity, repository, service, controller
+│   │       │   ├── product/       # Product entity, repository, service, controller
+│   │       │   ├── reorder/       # ReorderSuggestion entity, repository, service, controller
+│   │       │   └── seed/          # SeedDataLoader initializing the 8 demo catalog products
+│   │       └── resources/
+│   │           ├── application.yml        # Default production / PostgreSQL configuration
+│   │           └── application-local.yml  # Local H2 development profile
 └── frontend/                      # React 18 + TypeScript + Vite merchandising dashboard
+    ├── Dockerfile                 # Multi-stage Dockerfile (Node build -> Nginx runtime)
+    ├── nginx.conf                 # Nginx SPA fallback & backend API reverse proxy
+    ├── .dockerignore              # Excludes node_modules and dist from Docker context
+    ├── .gitignore                 # Frontend-specific ignore rules
     ├── package.json               # Frontend dependencies & scripts
     ├── vite.config.ts             # Vite configuration
     ├── src/
     │   ├── App.tsx                # Single-page dashboard, state, card grid, polling loop
-    │   ├── api.ts                 # Centralized REST API fetch utilities
+    │   ├── api.ts                 # Centralized REST API fetch utilities (configurable VITE_API_URL)
     │   ├── types.ts               # TypeScript interfaces for Product, Suggestions
     │   ├── index.css              # Custom styling, dark mode design system, badges
     │   └── main.tsx               # Application root bootstrap

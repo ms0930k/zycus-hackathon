@@ -5,6 +5,7 @@ import com.stockpulse.commerce.CommerceAdvisor;
 import com.stockpulse.commerce.ProductContext;
 import com.stockpulse.common.SuggestionStatus;
 import com.stockpulse.common.TriggerReason;
+import com.stockpulse.config.StrategyResolver;
 import com.stockpulse.product.Product;
 import com.stockpulse.product.ProductRepository;
 import com.stockpulse.reorder.dto.ReorderSuggestionResponse;
@@ -18,17 +19,17 @@ public class ReorderSuggestionService {
 
     private final ReorderSuggestionRepository reorderSuggestionRepository;
     private final ProductRepository productRepository;
-    private final CommerceAdvisor commerceAdvisor;
+    private final StrategyResolver strategyResolver;
     private final CategoryDemandService categoryDemandService;
 
     public ReorderSuggestionService(
             ReorderSuggestionRepository reorderSuggestionRepository,
             ProductRepository productRepository,
-            CommerceAdvisor commerceAdvisor,
+            StrategyResolver strategyResolver,
             CategoryDemandService categoryDemandService) {
         this.reorderSuggestionRepository = reorderSuggestionRepository;
         this.productRepository = productRepository;
-        this.commerceAdvisor = commerceAdvisor;
+        this.strategyResolver = strategyResolver;
         this.categoryDemandService = categoryDemandService;
     }
 
@@ -40,7 +41,7 @@ public class ReorderSuggestionService {
         ProductContext context = createProductContext(product, "MANUAL");
 
         // Get recommendation from commerce advisor
-        com.stockpulse.commerce.CommerceRecommendation recommendation = commerceAdvisor.recommend(context);
+        com.stockpulse.commerce.CommerceRecommendation recommendation = strategyResolver.getCurrentAdvisor().recommend(context);
 
         // Create reorder suggestion
         ReorderSuggestion reorderSuggestion = new ReorderSuggestion();
