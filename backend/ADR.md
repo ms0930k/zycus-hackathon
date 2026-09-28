@@ -45,11 +45,11 @@ We wanted to support different commerce strategies (rule-based vs AI) that can b
 3. Profile-based Spring configuration
 
 ### Decision
-We chose the strategy pattern with configuration-based selection to allow dynamic switching via environment variables.
+We chose the strategy pattern managed by a thread-safe `StrategyResolver` service with runtime selection. The strategy defaults from configuration (`stockpulse.commerce.strategy`) and can be dynamically swapped at runtime via `PUT /config/commerce-strategy` without application restart.
 
 ### Tradeoffs
-- Pros: No code changes needed, easy to add new strategies
-- Cons: Slight overhead of abstraction layer
+- Pros: Zero code changes or server restarts needed to switch between Rule-Based and AI, fully testable and switchable via API
+- Cons: Slight overhead of resolver indirection layer
 
 ## ADR-004: LLM Failure Handling
 
