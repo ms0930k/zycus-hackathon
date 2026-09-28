@@ -1,0 +1,4 @@
+com\stockpulse\commerce\AiCommerceAdvisorTest.class
+com\stockpulse\agent\AgenticRecommendationServiceTest.class
+com\stockpulse\commerce\RuleBasedCommerceAdvisorTest.class
+com\stockpulse\pricing\PricingSuggestionServiceTest.class
